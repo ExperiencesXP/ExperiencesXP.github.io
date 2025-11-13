@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>GitBooru • Socials</title>
+    <script>
+      (function(){
+        try{
+          var sp = new URL(window.location.href).searchParams;
+          var tOverride = sp.get('theme');
+          var aOverride = sp.get('accent');
+          var theme = tOverride || localStorage.getItem('gitbooru.theme')||'';
+          var accentSaved = localStorage.getItem('gitbooru.accent') || localStorage.getItem('gitbooru.ctpAccent') || '';
+          var accent = aOverride || accentSaved;
+          if(theme) document.documentElement.setAttribute('data-theme', theme);
+          if(accent){
+            document.documentElement.style.setProperty('--brand', accent);
+            if(theme.indexOf('ctp-')===0){ document.documentElement.style.setProperty('--ctp-accent', accent); }
+          }
+          if(tOverride){ try{ localStorage.setItem('gitbooru.theme', theme);}catch(e){} }
+          if(aOverride){ try{ localStorage.setItem('gitbooru.accent', accent);}catch(e){} }
+        }catch(e){}
+      })();
+    </script>
+    <link rel="stylesheet" href="css/styles.css" />
+    
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="container header-inner">
+        <a href="index.html" class="brand">GitBooru</a>
+        <div class="brand-sub">ExperiencesXP</div>
+        <nav class="top-nav" aria-label="Primary">
+          <a href="list.html">Browse</a>
+          <a href="cheatsheet.html">Cheatsheet</a>
+          <a href="settings.html">Settings</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="container main">
+      <h2>Socials</h2>
+      <div class="socials-grid">
+        <a class="social" href="https://github.com/ExperiencesXP" target="_blank" rel="noopener noreferrer" aria-label="GitHub">
+          <img src="images/github.png" alt="GitHub" />
+          <span>GitHub</span>
+        </a>
+        <a class="social" href="https://discordapp.com/users/558762972684484622" target="_blank" rel="noopener noreferrer" aria-label="Discord">
+          <img src="images/discord.png" alt="Discord" />
+          <span>Discord</span>
+        </a>
+        <a class="social" href="https://www.reddit.com/user/ExperiencesXP/" target="_blank" rel="noopener noreferrer" aria-label="Reddit">
+          <img src="images/reddit.png" alt="Reddit" />
+          <span>Reddit</span>
+        </a>
+        <a class="social" href="https://leetcode.com/u/Experiences/" target="_blank" rel="noopener noreferrer" aria-label="LeetCode">
+          <img src="images/leetcode.png" alt="LeetCode" />
+          <span>LeetCode</span>
+        </a>
+        
+        <a class="social" href="https://steamcommunity.com/id/ExperiencesXP/" target="_blank" rel="noopener noreferrer" aria-label="Steam">
+          <img src="images/steam.png" alt="Steam" />
+          <span>Steam</span>
+        </a>
+        <a class="social" href="mailto:gitexperiences@gmail.com" target="_blank" rel="noopener noreferrer" aria-label="Email (gitexperiences@gmail.com)" title="Email: gitexperiences@gmail.com">
+          <img src="images/mail.png" alt="Email" />
+          <span>Email</span>
+        </a>
+      </div>
+    </main>
+
+    <footer class="site-footer">
+      <div class="container">
+        <p>Made by <a href="https://github.com/ExperiencesXP" target="_blank" rel="noopener noreferrer">@ExperiencesXP</a> - <a href="index.html">Home</a></p>
+      </div>
+    </footer>
+  </body>
+</html>
