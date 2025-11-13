@@ -280,7 +280,8 @@
 			if (q.nameQ && nameInput) nameInput.value = q.nameQ;
 
 			const nameQ = (nameInput ? nameInput.value : q.nameQ).trim().toLowerCase();
-			const lang = elLang ? elLang.value : (q.lang || '');
+			// Prefer explicit query language (case-insensitive), fallback to dropdown selection
+			const lang = (q.lang || (elLang ? elLang.value : '') || '').trim();
 			const includeTags = q.include.map(normalizeTag);
 			const excludeTags = q.exclude.map(normalizeTag);
 
