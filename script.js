@@ -181,11 +181,37 @@
 	}
 
 	function buildLanguages(repos) {
-			if (!elLang) return; // tags-only on list page
-		const set = new Set();
-		repos.forEach(r => { if (r.language) set.add(r.language); });
-		const list = Array.from(set).sort((a,b) => a.localeCompare(b));
-		elLang.innerHTML = '<option value="">Any</option>' + list.map(l => `<option value="${escapeHtml(l)}">${escapeHtml(l)}</option>`).join('');
+			// Build a case-insensitive unique list of languages, preserving first-seen casing
+			const map = new Map(); // lower -> original
+			for (const r of repos) {
+				const lang = r && r.language ? String(r.language).trim() : '';
+				if (!lang) continue;
+				const key = lang.toLowerCase();
+				if (!map.has(key)) map.set(key, lang);
+			}
+			const list = Array.from(map.values()).sort((a,b) => a.localeCompare(b));
+
+			if (elLang) {
+				elLang.innerHTML = '<option value="">Any</option>' + list.map(l => `<option value="${escapeHtml(l)}">${escapeHtml(l)}</option>`).join('');
+			}
+
+			// Ensure all languages are available as <meta name="language" content="..."> tags in the document head
+			try { injectLanguageMetaTags(list); } catch {}
+	}
+
+	function injectLanguageMetaTags(langs) {
+		const head = document.head || document.getElementsByTagName('head')[0];
+		if (!head) return;
+		// Remove previously injected language meta tags
+		const old = head.querySelectorAll('meta[name="language"]');
+		old.forEach(m => m.parentNode && m.parentNode.removeChild(m));
+		// Add one meta tag per language
+		for (const l of langs) {
+			const meta = document.createElement('meta');
+			meta.setAttribute('name', 'language');
+			meta.setAttribute('content', l);
+			head.appendChild(meta);
+		}
 	}
 
 	function escapeHtml(str) {
@@ -242,7 +268,15 @@
 				sortSelect.value = allowed.includes(mapKey) ? mapKey : (sortSelect.value || 'updated');
 			}
 			if (q.dir && (q.dir === 'asc' || q.dir === 'desc')) { sortDir = q.dir; if (sortDirBtn) sortDirBtn.textContent = sortDir === 'asc' ? '↓' : '↑'; }
-			if (q.lang && elLang) elLang.value = q.lang;
+			// If a language was provided via query, select it case-insensitively in the dropdown
+			if (q.lang && elLang) {
+				const target = String(q.lang).toLowerCase();
+				let matched = '';
+				for (const opt of Array.from(elLang.options || [])) {
+					if (String(opt.value).toLowerCase() === target) { matched = opt.value; break; }
+				}
+				elLang.value = matched || q.lang;
+			}
 			if (q.nameQ && nameInput) nameInput.value = q.nameQ;
 
 			const nameQ = (nameInput ? nameInput.value : q.nameQ).trim().toLowerCase();
@@ -255,7 +289,8 @@
 				const hay = `${r.name} ${r.description}`.toLowerCase();
 				if (!hay.includes(nameQ)) return false;
 			}
-			if (lang && r.language !== lang) return false;
+			// Case-insensitive language match
+			if (lang && String(r.language || '').toLowerCase() !== String(lang).toLowerCase()) return false;
 			const tset = new Set((r.topics || []).map(t => normalizeTag(t)));
 			if (includeTags.length) {
 				for (const t of includeTags) { if (!tset.has(t)) return false; }
@@ -469,16 +504,26 @@
 		}
 
 		function buildSidebarLangs(repos) {
-			const freq = new Map();
-			for (const r of repos) if (r.language) freq.set(r.language, (freq.get(r.language)||0)+1);
-			const items = [...freq.entries()].sort((a,b)=> b[1]-a[1] || a[0].localeCompare(b[0]));
+			// Aggregate languages case-insensitively but preserve first-seen casing
+			const canon = new Map(); // lower -> original
+			const freq = new Map(); // lower -> count
+			for (const r of repos) {
+				const lang = r && r.language ? String(r.language).trim() : '';
+				if (!lang) continue;
+				const key = lang.toLowerCase();
+				if (!canon.has(key)) canon.set(key, lang);
+				freq.set(key, (freq.get(key) || 0) + 1);
+			}
+			const items = [...freq.entries()]
+				.map(([low,count]) => [canon.get(low), count])
+				.sort((a,b)=> b[1]-a[1] || a[0].localeCompare(b[0]));
 			elLangsList.innerHTML = items.map(([lang,count]) => (
 				`<li><a href="#" data-lang="${escapeHtml(lang)}"><span>${escapeHtml(lang)}</span><span class="count">${count}</span></a></li>`
 			)).join('');
 			elLangsList.querySelectorAll('a[data-lang]').forEach(a => {
 				a.addEventListener('click', (e) => {
 					e.preventDefault();
-					elLang.value = a.getAttribute('data-lang') || '';
+					if (elLang) elLang.value = a.getAttribute('data-lang') || '';
 					runSearch();
 				});
 			});
