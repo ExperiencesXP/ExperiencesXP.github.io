@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>GitBooru • Settings</title>
+    <script>
+      (function(){
+        try{
+          var sp = new URL(window.location.href).searchParams;
+          var tOverride = sp.get('theme');
+          var aOverride = sp.get('accent');
+          var theme = tOverride || localStorage.getItem('gitbooru.theme')||'';
+          var storedAccent = localStorage.getItem('gitbooru.accent') || localStorage.getItem('gitbooru.ctpAccent') || '';
+          var accent = aOverride || storedAccent;
+          if(theme) document.documentElement.setAttribute('data-theme', theme);
+          if(accent){
+            document.documentElement.style.setProperty('--brand', accent);
+            if(theme.indexOf('ctp-')===0){ document.documentElement.style.setProperty('--ctp-accent', accent); }
+          }
+          if(tOverride){ try{ localStorage.setItem('gitbooru.theme', theme);}catch(e){} }
+          if(aOverride){
+            try{
+              localStorage.setItem('gitbooru.accent', accent);
+              if(theme.indexOf('ctp-')===0){ localStorage.setItem('gitbooru.ctpAccent', accent); }
+            }catch(e){}
+          }
+        }catch(e){}
+      })();
+    </script>
+    <link rel="stylesheet" href="/styles.css" />
+    
+  </head>
+  <body class="list">
+    <header class="site-header">
+      <div class="container header-inner">
+        <a href="index.html" class="brand">GitBooru</a>
+        <div class="brand-sub">ExperiencesXP</div>
+        <nav class="top-nav" aria-label="Primary">
+          <a href="list.html">Browse</a>
+          <a href="cheatsheet.html">Cheatsheet</a>
+          <a href="settings.html" aria-current="page">Settings</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="container main" style="max-width: 920px;">
+      <h2>Settings</h2>
+  <p class="hint">Choose a theme. Catppuccin themes support an accent color via presets (defaults to mauve). Light/Dark ignore Catppuccin accent.</p>
+
+      <form id="settings-form" class="search-form" autocomplete="off" style="grid-template-columns: 1fr 1fr;">
+        <div class="field" style="grid-column: 1 / -1;">
+          <label>Theme</label>
+          <div class="theme-options" style="display:flex;flex-wrap:wrap;gap:10px;">
+            <label><input type="radio" name="theme" value="light"> Light</label>
+            <label><input type="radio" name="theme" value="dark"> Dark</label>
+            <label><input type="radio" name="theme" value="ctp-latte"> Catppuccin: Latte</label>
+            <label><input type="radio" name="theme" value="ctp-frappe"> Catppuccin: Frappé</label>
+            <label><input type="radio" name="theme" value="ctp-macchiato"> Catppuccin: Macchiato</label>
+            <label><input type="radio" name="theme" value="ctp-mocha"> Catppuccin: Mocha</label>
+          </div>
+        </div>
+
+        <div class="field" style="grid-column: 1 / -1;">
+          <label for="gh-token">GitHub token (optional)</label>
+          <input id="gh-token" type="password" placeholder="Paste a fine-grained PAT to increase API limits" />
+          <small class="hint">Stored locally in your browser only. Leave blank to keep existing. Use a token with read-only public_repo access.</small>
+          <div id="rate-status" class="hint" style="margin-top:6px;">API: checking…</div>
+        </div>
+
+        
+
+        <div class="field">
+          <label for="ctp-hue">Catppuccin color (accent)</label>
+          <select id="ctp-hue">
+            <option value="mauve">Mauve</option>
+            <option value="blue">Blue</option>
+            <option value="red">Red</option>
+            <option value="green">Green</option>
+            <option value="yellow">Yellow</option>
+            <option value="pink">Pink</option>
+            <option value="lavender">Lavender</option>
+          </select>
+          <small class="hint">Defaults to Mocha mauve (#cba6f7). Per-theme hues vary.</small>
+        </div>
+
+        <div class="actions" style="grid-column: 1 / -1; display:flex; gap:8px;">
+          <button class="btn primary" type="submit">Save</button>
+          <button class="btn" type="button" id="reset">Reset defaults</button>
+          <button class="btn" type="button" id="clear-token">Clear token</button>
+        </div>
+      </form>
+    </main>
+
+    <footer class="site-footer">
+      <div class="container"><p>Made by <a href="https://github.com/ExperiencesXP" target="_blank" rel="noopener noreferrer">@ExperiencesXP</a> - <a href="index.html">Home</a></p></div>
+    </footer>
+    <script>
+      (function(){
+  const form = document.getElementById('settings-form');
+  const hueSel = document.getElementById('ctp-hue');
+  const tokenInput = document.getElementById('gh-token');
+  
+
+        // Accent hues per theme (Light/Dark + Catppuccin variants)
+        const hues = {
+          'light':         { blue:'#2563eb', red:'#ef4444', green:'#16a34a', yellow:'#f59e0b', pink:'#ec4899', lavender:'#7c83ff', mauve:'#8b5cf6' },
+          'dark':          { blue:'#60a5fa', red:'#f87171', green:'#34d399', yellow:'#fbbf24', pink:'#f472b6', lavender:'#a5b4fc', mauve:'#a78bfa' },
+          'ctp-mocha':     { mauve:'#cba6f7', blue:'#89b4fa', red:'#f38ba8', green:'#a6e3a1', yellow:'#f9e2af', pink:'#f5c2e7', lavender:'#b4befe' },
+          'ctp-macchiato': { mauve:'#c6a0f6', blue:'#8aadf4', red:'#ed8796', green:'#a6da95', yellow:'#eed49f', pink:'#f5bde6', lavender:'#b7bdf8' },
+          'ctp-frappe':    { mauve:'#ca9ee6', blue:'#8caaee', red:'#e78284', green:'#a6d189', yellow:'#e5c890', pink:'#f4b8e4', lavender:'#babbf1' },
+          'ctp-latte':     { mauve:'#8839ef', blue:'#1e66f5', red:'#d20f39', green:'#40a02b', yellow:'#df8e1d', pink:'#ea76cb', lavender:'#7287fd' }
+        };
+
+        function load() {
+          const savedTheme = localStorage.getItem('gitbooru.theme') || 'light';
+          const savedAccent = localStorage.getItem('gitbooru.accent') || localStorage.getItem('gitbooru.ctpAccent') || '';
+          const computedAccent = window.getComputedStyle(document.documentElement).getPropertyValue('--brand').trim();
+          const targetAccent = savedAccent || computedAccent;
+          (form.querySelector(`input[name=theme][value="${savedTheme}"]`)||form.querySelector(`input[name=theme][value="light"]`)).checked = true;
+          const map = hues[savedTheme] || hues['light'];
+          const found = targetAccent ? Object.entries(map).find(([k,v])=> (v||'').toLowerCase() === targetAccent.toLowerCase()) : null;
+          if (found) {
+            hueSel.value = found[0];
+          } else if (!targetAccent) {
+            hueSel.value = 'blue';
+          }
+
+        }
+
+        function apply(theme, accentHex) {
+          document.documentElement.setAttribute('data-theme', theme);
+          if (accentHex) document.documentElement.style.setProperty('--brand', accentHex);
+          if (theme.startsWith('ctp-') && accentHex) {
+            document.documentElement.style.setProperty('--ctp-accent', accentHex);
+          }
+        }
+
+        async function updateRateStatus() {
+          const el = document.getElementById('rate-status');
+          if (!el) return;
+          el.textContent = 'API: checking…';
+          let headers = { 'Accept': 'application/vnd.github+json' };
+          try {
+            const savedToken = localStorage.getItem('gitbooru.token') || '';
+            if (savedToken) headers['Authorization'] = `Bearer ${savedToken}`;
+          } catch {}
+          try {
+            const res = await fetch('https://api.github.com/rate_limit', { headers });
+            if (!res.ok) { el.textContent = `API: ${res.status}`; return; }
+            const data = await res.json();
+            const core = data && data.resources && data.resources.core ? data.resources.core : null;
+            if (!core) { el.textContent = 'API: unavailable'; return; }
+            const when = new Date(core.reset * 1000);
+            const whenStr = when.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            el.textContent = `API: ${core.remaining}/${core.limit} (resets ~${whenStr})`;
+          } catch {
+            el.textContent = 'API: error';
+          }
+        }
+
+        
+
+        form.addEventListener('submit', async (e)=>{
+          e.preventDefault();
+          const theme = (form.querySelector('input[name=theme]:checked')||{}).value || 'light';
+          const map = hues[theme] || hues['light'];
+          const accent = (map[hueSel.value] || map.blue || '#2563eb');
+          try {
+            localStorage.setItem('gitbooru.theme', theme);
+            localStorage.setItem('gitbooru.accent', accent);
+            // Save token only if provided (blank keeps existing)
+            const t = (tokenInput.value||'').trim();
+            if (t) {
+              localStorage.setItem('gitbooru.token', t);
+            }
+            
+          } catch {}
+          apply(theme, accent);
+          updateRateStatus();
+          
+        });
+
+        document.getElementById('reset').addEventListener('click', ()=>{
+          const theme = 'light';
+          const accent = '#2563eb';
+          try {
+            localStorage.setItem('gitbooru.theme', theme);
+            localStorage.setItem('gitbooru.accent', accent);
+            
+          } catch {}
+          load();
+          apply(theme, accent);
+          updateRateStatus();
+          
+        });
+
+        document.getElementById('clear-token').addEventListener('click', ()=>{
+          try { localStorage.removeItem('gitbooru.token'); } catch {}
+          tokenInput.value = '';
+          alert('GitHub token cleared. Reload pages to apply.');
+          updateRateStatus();
+        });
+
+        load();
+        updateRateStatus();
+        
+      })();
+    </script>
+  </body>
+</html>

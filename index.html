@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>GitBooru • ExperiencesXP</title>
+				<script>
+				(function(){
+					try{
+						var sp = new URL(window.location.href).searchParams;
+						var tOverride = sp.get('theme');
+						var aOverride = sp.get('accent');
+						var theme = tOverride || localStorage.getItem('gitbooru.theme')||'';
+						var accentSaved = localStorage.getItem('gitbooru.accent') || localStorage.getItem('gitbooru.ctpAccent') || '';
+						var accent = aOverride || accentSaved;
+						if(theme) document.documentElement.setAttribute('data-theme', theme);
+						if(accent){
+							document.documentElement.style.setProperty('--brand', accent);
+							if(theme.indexOf('ctp-')===0){ document.documentElement.style.setProperty('--ctp-accent', accent); }
+						}
+						if(tOverride){ try{ localStorage.setItem('gitbooru.theme', theme);}catch(e){} }
+						if(aOverride){ try{ localStorage.setItem('gitbooru.accent', accent);}catch(e){} }
+					}catch(e){}
+				})();
+				</script>
+		<link rel="stylesheet" href="/styles.css" />
+		<meta name="description" content="A classic booru-style gallery to browse ExperiecnesXP's GitHub repositories by name, language, or tags with sorting." />
+
+	</head>
+		<body class="home">
+					<header class="site-header">
+						<div class="container header-inner">
+							<a href="#" class="brand">GitBooru</a>
+							<div class="brand-sub">ExperiencesXP</div>
+							<nav class="top-nav" aria-label="Primary">
+								<a href="list.html">Browse</a>
+								<a href="cheatsheet.html">Cheatsheet</a>
+								<a href="settings.html">Settings</a>
+							</nav>
+						</div>
+					</header>
+
+						<section class="splash">
+						<div class="container splash-inner">
+								<div class="hero" aria-label="GitBooru banner">
+									<div class="hero-logo">GitBooru</div>
+								</div>
+								<nav class="splash-nav" aria-label="Secondary">
+									<a href="https://github.com/ExperiencesXP/ExperiencesXP.github.io/pulls" target="_blank" rel="noopener noreferrer">Contribute</a>
+									<a href="https://github.com/ExperiencesXP/ExperiencesXP.github.io/discussions" target="_blank" rel="noopener noreferrer">Discussions</a>
+									<a href="socials.html">Socials</a>
+								</nav>
+							<form id="splash-search-form" class="splash-search" autocomplete="off">
+								<input id="splash-query" type="text" placeholder="tag1 tag2 tag3" />
+								<button class="btn primary" type="submit">Search</button>
+							</form>
+							<div class="splash-meta">
+								Serving <span id="serving-count">0</span> repos - Running <a href="https://github.com/ExperiencesXP/ExperiencesXP.github.io" target="_blank" rel="noopener noreferrer">GitBooru</a>
+							</div>
+								<div class="digits-row">
+									<img id="moe-repos" alt="Total repos" src="https://count.getloli.com/@gitbooru-repos-experiencesxp?theme=moebooru&pixelated=0&darkmode=0&scale=2&num=0" />
+								</div>
+										<div class="splash-meta small">Total number of visitors so far: <span id="visitors-count">0</span></div>
+						</div>
+					</section>
+
+		<section class="searchbar">
+			<div class="container">
+				<form id="search-form" class="search-form" autocomplete="off">
+					<div class="field">
+						<label for="name-input">Name</label>
+						<input id="name-input" type="text" placeholder="e.g. portfolio, cli, awesome" />
+					</div>
+					<div class="field">
+						<label for="tags-input">Tags</label>
+						<div class="input-with-button">
+							<input id="tags-input" type="text" placeholder="space-separated topics, e.g. web vite anime" />
+							<button class="btn primary" type="submit">Search</button>
+						</div>
+					</div>
+					<div class="field">
+						<label for="language-select">Language</label>
+						<select id="language-select">
+							<option value="">Any</option>
+						</select>
+					</div>
+				</form>
+				<p class="hint">Tip: Press Search with empty fields to browse everything.</p>
+			</div>
+		</section>
+
+			<main class="container main">
+				<div class="layout">
+					<aside class="sidebar" aria-label="Sidebar">
+						<section id="tags" class="side-section">
+							<h3>Tags</h3>
+							<ul id="tags-list" class="tag-list" aria-live="polite"></ul>
+						</section>
+						<section id="languages" class="side-section">
+							<h3>Languages</h3>
+							<ul id="langs-list" class="tag-list" aria-live="polite"></ul>
+						</section>
+					</aside>
+					<section class="content">
+						<div class="toolbar">
+							<div>
+								<span id="result-count">0</span> results • <span id="total-count">0</span> total
+							</div>
+							<div id="status" role="status" aria-live="polite"></div>
+						</div>
+						<div id="grid" class="grid" aria-live="polite" aria-busy="true">
+							<!-- repo cards injected by JS -->
+						</div>
+					</section>
+				</div>
+			</main>
+
+		<footer class="site-footer">
+			<div class="container">
+				<p>
+								Made by <a href="https://github.com/ExperiencesXP" target="_blank" rel="noopener noreferrer">@ExperiencesXP</a>
+				</p>
+			</div>
+		</footer>
+
+			<script>
+				window.BOORUHUB_CONFIG = {
+					user: "ExperiencesXP",
+					pages: 3, // how many pages of repos to fetch (100 per page)
+					visitors: {
+						provider: 'cloudflare',
+						url: 'https://gitbooru.alexander-b5e.workers.dev/'
+					}
+				};
+			</script>
+		<script src="/script.js" defer></script>
+	</body>
+	</html>

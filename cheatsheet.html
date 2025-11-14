@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>GitBooru • Cheatsheet</title>
+    <script>
+      (function(){
+        try{
+          var sp = new URL(window.location.href).searchParams;
+          var tOverride = sp.get('theme');
+          var aOverride = sp.get('accent');
+          var theme = tOverride || localStorage.getItem('gitbooru.theme')||'';
+          var accentSaved = localStorage.getItem('gitbooru.accent') || localStorage.getItem('gitbooru.ctpAccent') || '';
+          var accent = aOverride || accentSaved;
+          if(theme) document.documentElement.setAttribute('data-theme', theme);
+          if(accent){
+            document.documentElement.style.setProperty('--brand', accent);
+            if(theme.indexOf('ctp-')===0){ document.documentElement.style.setProperty('--ctp-accent', accent); }
+          }
+          if(tOverride){ try{ localStorage.setItem('gitbooru.theme', theme);}catch(e){} }
+          if(aOverride){ try{ localStorage.setItem('gitbooru.accent', accent);}catch(e){} }
+        }catch(e){}
+      })();
+    </script>
+    <link rel="stylesheet" href="/styles.css" />
+    
+  </head>
+  <body class="list">
+    <header class="site-header">
+      <div class="container header-inner">
+        <a href="index.html" class="brand">GitBooru</a>
+        <div class="brand-sub">ExperiencesXP</div>
+        <nav class="top-nav" aria-label="Primary">
+          <a href="list.html">Browse</a>
+          <a href="cheatsheet.html" aria-current="page">Cheatsheet</a>
+          <a href="settings.html">Settings</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="container main" style="max-width: 920px;">
+      <h2>Cheatsheet</h2>
+      <p>Use booru-style space-separated terms. Words are treated as tags (topics). These special tokens are supported:</p>
+
+      <div class="side-section">
+        <h3>Sorting</h3>
+        <ul>
+          <li><code>sort:stars</code></li>
+          <li><code>sort:forks</code></li>
+          <li><code>sort:watchers</code> (alias: <code>sort:watching</code>)</li>
+          <li><code>sort:issues</code></li>
+          <li><code>sort:updated</code></li>
+          <li><code>sort:created</code></li>
+        </ul>
+        <p><em>Direction</em>: <code>dir:asc</code> or <code>dir:desc</code> (alias: <code>order:</code>).</p>
+      </div>
+
+      <div class="side-section">
+        <h3>Filters</h3>
+        <ul>
+          <li><code>name:"quoted words"</code> or <code>name:word</code></li>
+          <li><code>lang:JavaScript</code> (optional; languages are not listed here)</li>
+          <li>Include tags: <code>tag1 tag2</code> (AND semantics)</li>
+          <li>Exclude tags: <code>-tag3 -tag4</code></li>
+        </ul>
+      </div>
+
+      <div class="side-section">
+        <h3>All tags you can browse</h3>
+        <p class="hint">Collected from repository topics (languages excluded).</p>
+        <ul id="all-tags" class="tag-list" style="max-height: unset;"></ul>
+      </div>
+
+      <p class="hint">Tip: Paste the whole query into the Tags box on Browse. Sorting is only via <code>sort:x</code>.</p>
+    </main>
+
+    <footer class="site-footer">
+      <div class="container"><p>Made by <a href="https://github.com/ExperiencesXP" target="_blank" rel="noopener noreferrer">@ExperiencesXP</a> - <a href="index.html">Home</a></p></div>
+    </footer>
+
+    <script>
+      (async function(){
+        const user = 'ExperiencesXP';
+        const token = (function(){ try { return localStorage.getItem('gitbooru.token') || ''; } catch { return ''; } })();
+        const baseHeaders = { 'Accept': 'application/vnd.github+json' };
+        if (token) baseHeaders['Authorization'] = `Bearer ${token}`;
+        const results = [];
+        for (let page=1; page<=3; page++) {
+          const url = `https://api.github.com/users/${encodeURIComponent(user)}/repos?per_page=100&page=${page}&sort=updated`;
+          const res = await fetch(url, { headers: baseHeaders });
+          if (!res.ok) break;
+          const data = await res.json();
+          if (!Array.isArray(data) || !data.length) break;
+          results.push(...data);
+          if (data.length < 100) break;
+        }
+        // fetch topics and aggregate (60 points of API unauthenticated request an hour, therefore we try to limit the amount used.)
+        const map = new Map();
+        const toProcess = results.slice(0, 40);
+        for (const r of toProcess) {
+          try {
+            const res = await fetch(`https://api.github.com/repos/${r.full_name}/topics`, { headers: { ...baseHeaders, 'Accept': 'application/vnd.github+json, application/vnd.github.mercy-preview+json' } });
+            if (!res.ok) continue;
+            const x = await res.json();
+            (x.names||[]).forEach(t => {
+              const k = String(t).toLowerCase();
+              map.set(k, (map.get(k) || 0) + 1);
+            });
+          } catch {}
+        }
+        const items = [...map.entries()].sort((a,b)=> b[1]-a[1] || a[0].localeCompare(b[0]));
+        const ul = document.getElementById('all-tags');
+        ul.innerHTML = items.map(([tag,count]) => `<li><a href="list.html?tags=${encodeURIComponent(tag)}"><span>#${tag}</span><span class=\"count\">${count}</span></a></li>`).join('');
+      })();
+    </script>
+  </body>
+</html>

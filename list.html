@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>GitBooru • Browse</title>
+    <script>
+      (function(){
+        try{
+          var sp = new URL(window.location.href).searchParams;
+          var tOverride = sp.get('theme');
+          var aOverride = sp.get('accent');
+          var theme = tOverride || localStorage.getItem('gitbooru.theme')||'';
+          var accentSaved = localStorage.getItem('gitbooru.accent') || localStorage.getItem('gitbooru.ctpAccent') || '';
+          var accent = aOverride || accentSaved;
+          if(theme) document.documentElement.setAttribute('data-theme', theme);
+          if(accent){
+            document.documentElement.style.setProperty('--brand', accent);
+            if(theme.indexOf('ctp-')===0){ document.documentElement.style.setProperty('--ctp-accent', accent); }
+          }
+          if(tOverride){ try{ localStorage.setItem('gitbooru.theme', theme);}catch(e){} }
+          if(aOverride){ try{ localStorage.setItem('gitbooru.accent', accent);}catch(e){} }
+        }catch(e){}
+      })();
+    </script>
+    <link rel="stylesheet" href="/styles.css" />
+    <meta name="description" content="Browse repositories like a booru posts list." />
+    
+  </head>
+  <body class="list">
+    <header class="site-header">
+      <div class="container header-inner">
+        <a href="index.html" class="brand">GitBooru</a>
+        <div class="brand-sub">ExperiencesXP</div>
+        <nav class="top-nav" aria-label="Primary">
+          <a href="list.html" aria-current="page">Browse</a>
+          <a href="cheatsheet.html">Cheatsheet</a>
+          <a href="settings.html">Settings</a>
+        </nav>
+      </div>
+    </header>
+
+    <section class="searchbar">
+      <div class="container">
+        <form id="search-form" class="search-form" autocomplete="off">
+          <div class="field" style="grid-column: 1 / -1;">
+            <label for="tags-input">Tags</label>
+            <div class="input-with-button">
+              <input id="tags-input" type="text" placeholder="tag1 tag2 tag3 (use sort:stars, dir:desc)" />
+              <button class="btn primary" type="submit">Search</button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <main class="container main">
+      <div class="toolbar">
+        <div>
+          <span id="result-count">0</span> results • <span id="total-count">0</span> total
+        </div>
+        <div id="status" role="status" aria-live="polite"></div>
+      </div>
+
+      <div id="grid" class="grid" aria-live="polite" aria-busy="true"></div>
+      <div id="pager" class="toolbar" aria-label="Pagination" style="justify-content:center"></div>
+    </main>
+
+    <footer class="site-footer">
+      <div class="container">
+        <p>Made by <a href="https://github.com/ExperiencesXP" target="_blank" rel="noopener noreferrer">@ExperiencesXP</a> - <a href="index.html">Home</a></p>
+      </div>
+    </footer>
+
+    <script>
+      window.BOORUHUB_CONFIG = {
+        user: "ExperiencesXP",
+        pages: 3
+      };
+    </script>
+    <script src="/script.js" defer></script>
+  </body>
+</html>
+
