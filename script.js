@@ -77,6 +77,12 @@
 				}
 				if (typeof r.watchers !== 'number') r.watchers = 0;
 				if (typeof r.issues !== 'number') r.issues = 0;
+				if (Array.isArray(r.topics)) {
+					r.topics = Array.from(new Set(r.topics.map(normalizeTag))).filter(Boolean);
+				} else {
+					r.topics = [];
+				}
+				if (!Array.isArray(r.languages)) r.languages = [];
 			});
 			return cached;
 		}
@@ -102,8 +108,9 @@
 			forks: r.forks_count || 0,
 			watchers: (typeof r.subscribers_count === 'number' ? r.subscribers_count : (typeof r.watchers_count === 'number' ? r.watchers_count : 0)),
 			issues: r.open_issues_count || 0,
-			language: r.language || '',
-			topics: Array.isArray(r.topics) ? r.topics : [],
+			language: r.language ? String(r.language).trim() : '',
+			topics: Array.isArray(r.topics) ? Array.from(new Set(r.topics.map(normalizeTag))).filter(Boolean) : [],
+			languages: [],
 			fork: !!r.fork,
 			updated_at: r.updated_at,
 			created_at: r.created_at,
@@ -180,23 +187,74 @@
 		return repos;
 	}
 
-	function buildLanguages(repos) {
-			// Build a case-insensitive unique list of languages, preserving first-seen casing
-			const map = new Map(); // lower -> original
-			for (const r of repos) {
-				const lang = r && r.language ? String(r.language).trim() : '';
-				if (!lang) continue;
+		async function enrichLanguages(repos) {
+			if (!Array.isArray(repos) || !repos.length) return repos;
+			const limited = [...repos].sort((a,b)=> new Date(b.updated_at) - new Date(a.updated_at)).slice(0, 40);
+			const toFetch = limited.filter(r => !Array.isArray(r.languages) || !r.languages.length);
+			if (!toFetch.length) return repos;
+			const limit = 3;
+			let idx = 0;
+			const run = async () => {
+				while (idx < toFetch.length) {
+					const cur = toFetch[idx++];
+					try {
+						const res = await fetch(`https://api.github.com/repos/${cur.full_name}/languages`, { headers });
+						if (res.ok) {
+							const data = await res.json();
+							if (data && typeof data === 'object') {
+								cur.languages = Object.keys(data).map(l => String(l || '').trim()).filter(Boolean);
+							} else {
+								cur.languages = [];
+							}
+						} else if (res.status === 403) {
+							setStatus('Hit GitHub API limit while fetching languages. Language list may be incomplete.', 'warn');
+							break;
+						} else {
+							cur.languages = [];
+						}
+					} catch {
+						cur.languages = [];
+					}
+				}
+			};
+			const workers = Array.from({ length: limit }, run);
+			await Promise.all(workers);
+			return repos;
+		}
+
+	function getRepoLanguages(repo) {
+		const seen = new Set();
+		const add = (value) => {
+			const lang = value ? String(value).trim() : '';
+			if (lang) seen.add(lang);
+		};
+		add(repo.language);
+		if (Array.isArray(repo.languages)) {
+			repo.languages.forEach(add);
+		}
+		return seen;
+	}
+
+	function collectAllLanguages(repos) {
+		const map = new Map(); // lower-case key -> canonical casing
+		for (const r of repos) {
+			for (const lang of getRepoLanguages(r)) {
 				const key = lang.toLowerCase();
 				if (!map.has(key)) map.set(key, lang);
 			}
-			const list = Array.from(map.values()).sort((a,b) => a.localeCompare(b));
+		}
+		return map;
+	}
 
-			if (elLang) {
-				elLang.innerHTML = '<option value="">Any</option>' + list.map(l => `<option value="${escapeHtml(l)}">${escapeHtml(l)}</option>`).join('');
-			}
+	function buildLanguages(repos) {
+		const langsMap = collectAllLanguages(repos);
+		const list = Array.from(langsMap.values()).sort((a, b) => a.localeCompare(b));
 
-			// Ensure all languages are available as <meta name="language" content="..."> tags in the document head
-			try { injectLanguageMetaTags(list); } catch {}
+		if (elLang) {
+			elLang.innerHTML = '<option value="">Any</option>' + list.map(l => `<option value="${escapeHtml(l)}">${escapeHtml(l)}</option>`).join('');
+		}
+
+		try { injectLanguageMetaTags(list); } catch {}
 	}
 
 	function injectLanguageMetaTags(langs) {
@@ -261,7 +319,9 @@
 
 	function applyFilters(repos) {
 			const tagsRaw = (tagsInput ? tagsInput.value : '').trim();
-			const q = parseTagsQuery(tagsRaw);
+			const normalizedTags = tagsRaw.toLowerCase();
+			if (tagsInput) tagsInput.value = normalizedTags;
+			const q = parseTagsQuery(normalizedTags);
 			if (q.sortKey && sortSelect) {
 				const mapKey = (q.sortKey === 'watching') ? 'watchers' : q.sortKey;
 				const allowed = ['stars','forks','watchers','issues','updated','created'];
@@ -291,7 +351,13 @@
 				if (!hay.includes(nameQ)) return false;
 			}
 			// Case-insensitive language match
-			if (lang && String(r.language || '').toLowerCase() !== String(lang).toLowerCase()) return false;
+			if (lang) {
+				const desired = lang.toLowerCase();
+				const repoLang = String(r.language || '').toLowerCase();
+				const extraLangs = Array.isArray(r.languages) ? r.languages : [];
+				const matches = repoLang === desired || extraLangs.some(l => String(l || '').toLowerCase() === desired);
+				if (!matches) return false;
+			}
 			const tset = new Set((r.topics || []).map(t => normalizeTag(t)));
 			if (includeTags.length) {
 				for (const t of includeTags) { if (!tset.has(t)) return false; }
@@ -332,31 +398,32 @@
 
 	function renderCard(r) {
 		const desc = r.description ? escapeHtml(r.description) : '';
-			const domain = '';
-				const topicsForDisplay = displayedTopics(r);
-				const topicSet = new Set((r.topics || []).map(normalizeTag));
-				const isFork = !!r.fork || topicSet.has('fork');
-	    		const tagsHtml = topicsForDisplay.slice(0, 6).map(t => `<span class="tag">${escapeHtml(t)}</span>`).join('');
-			const thumb = `https://opengraph.githubassets.com/1/${r.full_name}`;
-			return `
-				<a class="card" href="${r.html_url}" target="_blank" rel="noopener noreferrer">
-					<div class="thumb" style="background-image:url('${thumb}')"></div>
-					<div class="content">
-						<div class="title">${escapeHtml(r.name)}</div>
-						<div class="desc" title="${desc}">${desc}</div>
-						<div class="meta">
-							<span class="badge" title="Stars">★ ${typeof r.stars === 'number' ? r.stars : 0}</span>
-							<span class="badge" title="Forks">⑂ ${typeof r.forks === 'number' ? r.forks : 0}</span>
-							<span class="badge" title="Watchers">👁 ${typeof r.watchers === 'number' ? r.watchers : 0}</span>
-								${isFork ? `<span class="badge" title="Forked">Forked</span>` : ''}
-							${r.language ? `<span class="badge" title="Language">${escapeHtml(r.language)}</span>` : ''}
-							${domain ? `<span class="badge" title="Homepage">${escapeHtml(domain)}</span>` : ''}
-							${r.issues ? `<span class=\"badge\" title=\"Open issues\">Issues ${r.issues}</span>` : ''}
-						</div>
-						<div class="tags">${tagsHtml}</div>
+		const domain = '';
+		const topicsForDisplay = displayedTopics(r);
+		const topicSet = new Set((r.topics || []).map(normalizeTag));
+		const isFork = !!r.fork || topicSet.has('fork');
+		const tagsHtml = topicsForDisplay.slice(0, 6).map(t => `<span class="tag">${escapeHtml(t)}</span>`).join('');
+		const thumb = `https://opengraph.githubassets.com/1/${r.full_name}`;
+		const languageBadges = Array.from(getRepoLanguages(r)).map(lang => `<span class="badge" title="Language">${escapeHtml(lang)}</span>`).join('');
+		return `
+			<a class="card" href="${r.html_url}" target="_blank" rel="noopener noreferrer">
+				<div class="thumb" style="background-image:url('${thumb}')"></div>
+				<div class="content">
+					<div class="title">${escapeHtml(r.name)}</div>
+					<div class="desc" title="${desc}">${desc}</div>
+					<div class="meta">
+						<span class="badge" title="Stars">★ ${typeof r.stars === 'number' ? r.stars : 0}</span>
+						<span class="badge" title="Forks">⑂ ${typeof r.forks === 'number' ? r.forks : 0}</span>
+						<span class="badge" title="Watchers">👁 ${typeof r.watchers === 'number' ? r.watchers : 0}</span>
+						${isFork ? `<span class="badge" title="Forked">Forked</span>` : ''}
+						${languageBadges}
+						${domain ? `<span class="badge" title="Homepage">${escapeHtml(domain)}</span>` : ''}
+						${r.issues ? `<span class=\"badge\" title=\"Open issues\">Issues ${r.issues}</span>` : ''}
 					</div>
-				</a>
-			`;
+					<div class="tags">${tagsHtml}</div>
+				</div>
+			</a>
+		`;
 	}
 
 		function updateCounts(filtered, total) {
@@ -414,6 +481,12 @@
 				});
 			}
 			if (sortSelect) sortSelect.addEventListener('change', runSearch);
+			if (tagsInput) {
+				tagsInput.addEventListener('input', () => {
+					const lower = tagsInput.value.toLowerCase();
+					if (tagsInput.value !== lower) tagsInput.value = lower;
+				});
+			}
 			if (sortDirBtn) sortDirBtn.addEventListener('click', () => {
 				sortDir = sortDir === 'asc' ? 'desc' : 'asc';
 				sortDirBtn.textContent = sortDir === 'asc' ? '↓' : '↑';
@@ -505,22 +578,21 @@
 		}
 
 		function buildSidebarLangs(repos) {
-			// Aggregate languages case-insensitively but preserve first-seen casing
-			const canon = new Map(); // lower -> original
 			const freq = new Map(); // lower -> count
+			const canon = new Map(); // lower -> first-seen casing
 			for (const r of repos) {
-				const lang = r && r.language ? String(r.language).trim() : '';
-				if (!lang) continue;
-				const key = lang.toLowerCase();
-				if (!canon.has(key)) canon.set(key, lang);
-				freq.set(key, (freq.get(key) || 0) + 1);
+				for (const lang of getRepoLanguages(r)) {
+					const key = lang.toLowerCase();
+					if (!canon.has(key)) canon.set(key, lang);
+					freq.set(key, (freq.get(key) || 0) + 1);
+				}
 			}
 			const items = [...freq.entries()]
-				.map(([low,count]) => [canon.get(low), count])
-				.sort((a,b)=> b[1]-a[1] || a[0].localeCompare(b[0]));
-			elLangsList.innerHTML = items.map(([lang,count]) => (
-				`<li><a href="#" data-lang="${escapeHtml(lang)}"><span>${escapeHtml(lang)}</span><span class="count">${count}</span></a></li>`
-			)).join('');
+				.sort((a,b) => b[1]-a[1] || (canon.get(a[0]) || '').localeCompare(canon.get(b[0]) || ''));
+			elLangsList.innerHTML = items.map(([key,count]) => {
+				const label = canon.get(key) || key;
+				return `<li><a href="#" data-lang="${escapeHtml(label)}"><span>${escapeHtml(label)}</span><span class="count">${count}</span></a></li>`;
+			}).join('');
 			elLangsList.querySelectorAll('a[data-lang]').forEach(a => {
 				a.addEventListener('click', (e) => {
 					e.preventDefault();
@@ -545,7 +617,7 @@
 				try {
 					const sp = new URL(window.location.href).searchParams;
 					const tagsQ = sp.get('tags');
-					if (tagsQ && tagsInput) tagsInput.value = tagsQ;
+					if (tagsQ && tagsInput) tagsInput.value = tagsQ.toLowerCase();
 				} catch {}
 				runSearch();
 				if (elLangsList) buildSidebarLangs(allRepos);
@@ -564,16 +636,20 @@
 				try {
 					const sp = new URL(window.location.href).searchParams;
 					const tagsQ = sp.get('tags');
-					if (tagsQ && tagsInput) tagsInput.value = tagsQ;
+					if (tagsQ && tagsInput) tagsInput.value = tagsQ.toLowerCase();
 				} catch {}
 				runSearch(); // initial browse
 				if (elLangsList) buildSidebarLangs(allRepos);
 			}
 			Promise.all([
 				enrichTopics(allRepos),
-				enrichWatchers(allRepos)
+				enrichWatchers(allRepos),
+				enrichLanguages(allRepos)
 			]).then(() => {
+				saveCache(allRepos);
 				if (elTagsList) buildSidebarTags(allRepos);
+				if (elLangsList) buildSidebarLangs(allRepos);
+				buildLanguages(allRepos);
 				runSearch();
 			});
 			setStatus('');

@@ -105,13 +105,18 @@
 
         function load() {
           const savedTheme = localStorage.getItem('gitbooru.theme') || 'light';
-          const savedAccent = localStorage.getItem('gitbooru.accent') || localStorage.getItem('gitbooru.ctpAccent') || '#2563eb';
+          const savedAccent = localStorage.getItem('gitbooru.accent') || localStorage.getItem('gitbooru.ctpAccent') || '';
+          const computedAccent = window.getComputedStyle(document.documentElement).getPropertyValue('--brand').trim();
+          const targetAccent = savedAccent || computedAccent;
           (form.querySelector(`input[name=theme][value="${savedTheme}"]`)||form.querySelector(`input[name=theme][value="light"]`)).checked = true;
           const map = hues[savedTheme] || hues['light'];
-          const found = Object.entries(map).find(([k,v])=> (v||'').toLowerCase() === (savedAccent||'').toLowerCase());
-          hueSel.value = found ? found[0] : 'blue';
+          const found = targetAccent ? Object.entries(map).find(([k,v])=> (v||'').toLowerCase() === targetAccent.toLowerCase()) : null;
+          if (found) {
+            hueSel.value = found[0];
+          } else if (!targetAccent) {
+            hueSel.value = 'blue';
+          }
 
-          
         }
 
         function apply(theme, accentHex) {

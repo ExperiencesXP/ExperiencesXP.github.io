@@ -222,7 +222,7 @@ body {
 .card .content { padding: 10px 12px 12px; }
 .card .title { font-weight: 700; font-size: 0.98rem; margin-bottom: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .card .desc { color: var(--muted); font-size: 0.88rem; height: 40px; overflow: hidden; }
-.meta { display: flex; gap: 6px; font-size: 0.74rem; color: var(--muted); margin-top: 8px; }
+.meta { display: flex; gap: 6px; font-size: 0.74rem; color: var(--muted); margin-top: 8px; flex-wrap: wrap; align-items: center; }
 .badge { background: var(--badge-bg); border: 1px solid var(--border); border-radius: 999px; padding: 1px 6px; font-size: 0.7rem; }
 .tags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
 .tag { background: transparent; border: 1px solid var(--brand); color: var(--brand); border-radius: 999px; padding: 2px 8px; font-size: 0.72rem; }
