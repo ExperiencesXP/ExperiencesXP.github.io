@@ -130,6 +130,8 @@ body {
 .splash-search input { background: var(--panel); color: var(--ink); }
 .splash-search .btn { width: 100%; }
 .splash-meta { color: var(--muted); font-size: 0.85rem; margin-top: 2px; }
+.splash-meta a { color: var(--brand); font-weight: 600; text-decoration: none; }
+.splash-meta a:hover { text-decoration: underline; }
 .splash-meta.small { font-size: 0.8rem; }
 .splash-meta.tiny { font-size: 0.75rem; }
 .digits-row img { height: 100px; image-rendering: pixelated; }

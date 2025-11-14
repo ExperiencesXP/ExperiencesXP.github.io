@@ -11,11 +11,20 @@
           var tOverride = sp.get('theme');
           var aOverride = sp.get('accent');
           var theme = tOverride || localStorage.getItem('gitbooru.theme')||'';
-          var accent = aOverride || localStorage.getItem('gitbooru.ctpAccent')||'';
+          var storedAccent = localStorage.getItem('gitbooru.accent') || localStorage.getItem('gitbooru.ctpAccent') || '';
+          var accent = aOverride || storedAccent;
           if(theme) document.documentElement.setAttribute('data-theme', theme);
-          if(accent && theme.indexOf('ctp-')===0){ document.documentElement.style.setProperty('--ctp-accent', accent); }
+          if(accent){
+            document.documentElement.style.setProperty('--brand', accent);
+            if(theme.indexOf('ctp-')===0){ document.documentElement.style.setProperty('--ctp-accent', accent); }
+          }
           if(tOverride){ try{ localStorage.setItem('gitbooru.theme', theme);}catch(e){} }
-          if(aOverride && theme.indexOf('ctp-')===0){ try{ localStorage.setItem('gitbooru.ctpAccent', accent);}catch(e){} }
+          if(aOverride){
+            try{
+              localStorage.setItem('gitbooru.accent', accent);
+              if(theme.indexOf('ctp-')===0){ localStorage.setItem('gitbooru.ctpAccent', accent); }
+            }catch(e){}
+          }
         }catch(e){}
       })();
     </script>
