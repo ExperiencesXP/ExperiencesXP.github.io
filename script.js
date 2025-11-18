@@ -40,6 +40,13 @@
 	let allRepos = [];
 	let current = [];
 	let sortDir = 'desc';
+	const DEFAULT_USER = cfg.user || 'ExperiencesXP';
+	const CACHE_PREFIX = 'gitbooru.cache.v1:';
+	const CACHE_TTL = 1000 * 60 * 30; // 30 minutes
+	let activeUser = DEFAULT_USER;
+	let pendingUserLoad = null;
+	const multiUserSnapshots = new Map();
+	const pendingMultiLoads = new Map();
 
 		const headers = (() => {
 			const h = { 'Accept': 'application/vnd.github+json' };
@@ -47,26 +54,46 @@
 			return h;
 		})();
 
+	function normalizeUserHandle(raw) {
+		return String(raw || '').replace(/^@+/, '').trim();
+	}
+
+	function dedupeUsers(list) {
+		const seen = new Map();
+		for (const raw of Array.isArray(list) ? list : []) {
+			const cleaned = normalizeUserHandle(raw);
+			if (!cleaned) continue;
+			const low = cleaned.toLowerCase();
+			if (!seen.has(low)) seen.set(low, cleaned);
+		}
+		return Array.from(seen.values());
+	}
+
 	function setStatus(msg, kind = 'info') {
 		elStatus.textContent = msg || '';
 		elStatus.className = kind;
 	}
 
-	function loadCache(freshOnly = true) {
+	function getCacheKey(user) {
+		const target = (user || activeUser || DEFAULT_USER).toLowerCase();
+		return `${CACHE_PREFIX}${target}`;
+	}
+
+	function loadCache(user, freshOnly = true) {
 		try {
-			const raw = localStorage.getItem(CACHE_KEY);
+			const raw = localStorage.getItem(getCacheKey(user));
 			if (!raw) return null;
 			const data = JSON.parse(raw);
 			if (freshOnly && (Date.now() - data.time > CACHE_TTL)) return null;
 			return data.payload;
 		} catch { return null; }
 	}
-	function saveCache(payload) {
-		try { localStorage.setItem(CACHE_KEY, JSON.stringify({ time: Date.now(), payload })); } catch {}
+	function saveCache(user, payload) {
+		try { localStorage.setItem(getCacheKey(user), JSON.stringify({ time: Date.now(), payload })); } catch {}
 	}
 
-	async function fetchAllRepos(user, pages = 2) {
-		const cached = loadCache(true);
+	async function fetchAllRepos(user = DEFAULT_USER, pages = 2) {
+		const cached = loadCache(user, true);
 		if (cached && Array.isArray(cached) && cached.length) {
 			// Ensure fork tags and numeric fields exist even for cached payloads
 			cached.forEach(r => {
@@ -124,7 +151,7 @@
 				['fork', 'forked'].forEach(t => { if (!base.has(t)) (r.topics || (r.topics=[])).push(t); });
 			}
 		});
-		saveCache(normalized);
+		saveCache(user, normalized);
 		return normalized;
 	}
 
@@ -297,9 +324,9 @@
 	}
 
 	// Parse tags-style query for special tokens similar to booru search
-	// Supports: sort:<stars|forks|updated|created> dir:<asc|desc> lang:<Name> name:"quoted words" name:<word> -tag
+	// Supports: sort:<stars|forks|updated|created> dir:<asc|desc> lang:<Name> name:"quoted words" name:<word> user:<owner> (repeatable) -tag
 	function parseTagsQuery(raw) {
-		const ctx = { include: [], exclude: [], sortKey: null, dir: null, lang: null, nameQ: '' };
+		const ctx = { include: [], exclude: [], sortKey: null, dir: null, lang: null, nameQ: '', user: null, users: [] };
 		if (!raw) return ctx;
 		const quoted = raw.match(/(?:^|\s)name:\"([^\"]+)\"/i);
 		if (quoted) ctx.nameQ = quoted[1];
@@ -310,6 +337,14 @@
 			if (low.startsWith('sort:')) { ctx.sortKey = low.slice(5); continue; }
 			if (low.startsWith('dir:') || low.startsWith('order:')) { ctx.dir = low.split(':')[1]; continue; }
 			if (low.startsWith('lang:') || low.startsWith('language:')) { ctx.lang = p.split(':')[1]; continue; }
+			if (low.startsWith('user:')) {
+				const val = p.split(':')[1];
+				if (val) {
+					ctx.users.push(val);
+					if (!ctx.user) ctx.user = val;
+				}
+				continue;
+			}
 			if (low.startsWith('name:')) { ctx.nameQ = p.slice(5); continue; }
 			if (low.startsWith('-') && low.length > 1) { ctx.exclude.push(low.slice(1)); continue; }
 			ctx.include.push(low);
@@ -431,6 +466,160 @@
 		if (elTotal) elTotal.textContent = String(total);
 	}
 
+	function refreshUiFromRepos(includeTags = false) {
+		if (elServing) elServing.textContent = String(allRepos.length);
+		updateMoeRepos(allRepos.length);
+		buildLanguages(allRepos);
+		if (elLangsList) buildSidebarLangs(allRepos);
+		if (includeTags && elTagsList) buildSidebarTags(allRepos);
+	}
+
+	function applyReposSnapshot(repos, userLabel, options = {}) {
+		const opts = options || {};
+		allRepos = Array.isArray(repos) ? repos : [];
+		activeUser = userLabel;
+		refreshUiFromRepos(!!opts.includeTags);
+	}
+
+	function scheduleEnrichment(userLabel, options = {}) {
+		const shouldCache = options.cache !== false;
+		const labelKey = (userLabel || '').toLowerCase();
+		return Promise.all([
+			enrichTopics(allRepos),
+			enrichWatchers(allRepos),
+			enrichLanguages(allRepos)
+		]).then(() => {
+			if (shouldCache) {
+				saveCache(userLabel, allRepos);
+			} else if (multiUserSnapshots.has(labelKey)) {
+				multiUserSnapshots.set(labelKey, allRepos.slice());
+			}
+			if ((activeUser || '').toLowerCase() === userLabel.toLowerCase()) {
+				if (elTagsList) buildSidebarTags(allRepos);
+				if (elLangsList) buildSidebarLangs(allRepos);
+				buildLanguages(allRepos);
+				runSearch();
+			}
+		}).catch(() => {
+			/* swallow enrichment errors so base data still shows */
+		});
+	}
+
+	function handleFetchFailure(err, userLabel, cached) {
+		console.error(err);
+		setStatus(err && err.message ? err.message : `Failed to load repositories for ${userLabel}`, 'warn');
+		const fallback = cached && Array.isArray(cached) && cached.length ? cached : loadCache(userLabel, false);
+		if (fallback && fallback.length) {
+			applyReposSnapshot(fallback, userLabel, { includeTags: true });
+			runSearch();
+			return;
+		}
+		const msg = ((err && err.message) || '').toLowerCase();
+		const code = msg.includes('rate limit') ? 403 : 404;
+		updateMoeRepos(code * 100, true);
+		if (elServing) elServing.textContent = '0';
+		allRepos = [];
+		renderGrid([]);
+		updateCounts(0, 0);
+		elGrid.setAttribute('aria-busy', 'false');
+	}
+
+	function refreshDataForUser(requestedUser) {
+		const target = (requestedUser || DEFAULT_USER).trim() || DEFAULT_USER;
+		const normalized = target.toLowerCase();
+		if (pendingUserLoad && pendingUserLoad.user === normalized) {
+			return pendingUserLoad.promise;
+		}
+		const job = (async () => {
+			let cachedAny = null;
+			try {
+				setStatus(`Loading repositories for ${target}…`);
+				cachedAny = loadCache(target, false);
+				if (cachedAny && Array.isArray(cachedAny) && cachedAny.length) {
+					applyReposSnapshot(cachedAny, target, { includeTags: true });
+					runSearch();
+				}
+				const repos = await fetchAllRepos(target, cfg.pages);
+				if (normalized !== target.toLowerCase()) return;
+				applyReposSnapshot(repos, target);
+				runSearch();
+				await scheduleEnrichment(target);
+			} catch (err) {
+				handleFetchFailure(err, target, cachedAny);
+			} finally {
+				setStatus('');
+			}
+		})();
+		pendingUserLoad = { user: normalized, promise: job };
+		return job.finally(() => {
+			if (pendingUserLoad && pendingUserLoad.user === normalized) pendingUserLoad = null;
+		});
+	}
+
+	function maybeSwitchSingleUser(userToken) {
+		const desired = (userToken || DEFAULT_USER).trim() || DEFAULT_USER;
+		const normalizedDesired = desired.toLowerCase();
+		const normalizedActive = (activeUser || '').toLowerCase();
+		if (normalizedDesired === normalizedActive && allRepos.length) return false;
+		elGrid.innerHTML = '';
+		elGrid.setAttribute('aria-busy', 'true');
+		refreshDataForUser(desired);
+		return true;
+	}
+
+	function maybeSwitchMultiUsers(users) {
+		const normalizedList = dedupeUsers(users);
+		if (!normalizedList.length) return maybeSwitchSingleUser(DEFAULT_USER);
+		const key = normalizedList.map(u => u.toLowerCase()).sort().join(',');
+		const displayLabel = normalizedList.join(', ');
+		const normalizedActive = (activeUser || '').toLowerCase();
+		if (normalizedActive === key && allRepos.length) return false;
+		if (multiUserSnapshots.has(key)) {
+			applyReposSnapshot(multiUserSnapshots.get(key), key, { includeTags: true });
+			return false;
+		}
+		if (pendingMultiLoads.has(key)) return true;
+		elGrid.innerHTML = '';
+		elGrid.setAttribute('aria-busy', 'true');
+		setStatus(`Loading repositories for ${displayLabel}…`);
+		const jobs = normalizedList.map(user => (
+			fetchAllRepos(user, cfg.pages).catch(err => {
+				console.error(err);
+				setStatus(`Some users failed to load. Showing what we could.`, 'warn');
+				return [];
+			})
+		));
+		const job = Promise.all(jobs)
+			.then(results => {
+				const combined = results.flat().map(r => ({
+					...r,
+					topics: Array.isArray(r.topics) ? [...r.topics] : [],
+					languages: Array.isArray(r.languages) ? [...r.languages] : []
+				}));
+				multiUserSnapshots.set(key, combined);
+				applyReposSnapshot(combined, key, { includeTags: true });
+				scheduleEnrichment(key, { cache: false });
+				runSearch();
+				if (combined.length) setStatus('');
+				else setStatus(`No repositories found for ${displayLabel}.`, 'warn');
+			})
+			.catch(err => {
+				handleFetchFailure(err, displayLabel, null);
+			})
+			.finally(() => {
+				pendingMultiLoads.delete(key);
+			});
+		pendingMultiLoads.set(key, job);
+		return true;
+	}
+
+	function ensureUsersData(usersTokens) {
+		const normalizedList = dedupeUsers(usersTokens);
+		if (!normalizedList.length) return maybeSwitchSingleUser(DEFAULT_USER);
+		if (normalizedList.length === 1) return maybeSwitchSingleUser(normalizedList[0]);
+		return maybeSwitchMultiUsers(normalizedList);
+	}
+
 	// Moe counter showing total repos using getloli's num parameter
 	function updateMoeRepos(total, mask = false) {
 		if (!elMoeRepos) return;
@@ -448,6 +637,10 @@
 	}
 
 	function runSearch() {
+		const tagsRaw = (tagsInput ? tagsInput.value : '').trim().toLowerCase();
+		const query = parseTagsQuery(tagsRaw);
+		const desiredUsers = query.users && query.users.length ? query.users : (query.user ? [query.user] : []);
+		if (ensureUsersData(desiredUsers)) return;
 		const filtered = applyFilters(allRepos);
 		current = sortRepos(filtered);
 		renderGrid(current);
@@ -607,72 +800,14 @@
 			setStatus('Loading repositories…');
 			bindEvents();
 			updateVisitors();
-
-			const cachedAny = loadCache(false);
-			if (cachedAny && Array.isArray(cachedAny) && cachedAny.length) {
-				allRepos = cachedAny;
-				if (elServing) elServing.textContent = String(allRepos.length);
-				updateMoeRepos(allRepos.length);
-				buildLanguages(allRepos);
-				try {
-					const sp = new URL(window.location.href).searchParams;
-					const tagsQ = sp.get('tags');
-					if (tagsQ && tagsInput) tagsInput.value = tagsQ.toLowerCase();
-				} catch {}
-				runSearch();
-				if (elLangsList) buildSidebarLangs(allRepos);
-			}
-
-			// Fetch fresh data, fall back to cached if rate limited
-			const repos = await fetchAllRepos(cfg.user, cfg.pages);
-			allRepos = repos;
-			updateCounts(cachedAny ? current.length : 0, allRepos.length);
-			if (elServing) elServing.textContent = String(allRepos.length);
-			updateMoeRepos(allRepos.length);
-			buildLanguages(allRepos);
-
-			// If we're on the list page and have ?tags= in URL, apply it (already applied if from cache)
-			if (!cachedAny) {
-				try {
-					const sp = new URL(window.location.href).searchParams;
-					const tagsQ = sp.get('tags');
-					if (tagsQ && tagsInput) tagsInput.value = tagsQ.toLowerCase();
-				} catch {}
-				runSearch(); // initial browse
-				if (elLangsList) buildSidebarLangs(allRepos);
-			}
-			Promise.all([
-				enrichTopics(allRepos),
-				enrichWatchers(allRepos),
-				enrichLanguages(allRepos)
-			]).then(() => {
-				saveCache(allRepos);
-				if (elTagsList) buildSidebarTags(allRepos);
-				if (elLangsList) buildSidebarLangs(allRepos);
-				buildLanguages(allRepos);
-				runSearch();
-			});
-			setStatus('');
+			try {
+				const sp = new URL(window.location.href).searchParams;
+				const tagsQ = sp.get('tags');
+				if (tagsQ && tagsInput) tagsInput.value = tagsQ.toLowerCase();
+			} catch {}
+			runSearch();
 		} catch (err) {
-			console.error(err);
-			setStatus(err.message || 'Failed to load repositories', 'warn');
-			elGrid.setAttribute('aria-busy', 'false');
-			const cachedAny = loadCache(false);
-			if (cachedAny && Array.isArray(cachedAny) && cachedAny.length) {
-				allRepos = cachedAny;
-				if (elServing) elServing.textContent = String(allRepos.length);
-				updateMoeRepos(allRepos.length);
-				buildLanguages(allRepos);
-				runSearch();
-				if (elLangsList) buildSidebarLangs(allRepos);
-			} else {
-				const msg = (err && err.message || '').toLowerCase();
-				// Center the 3-digit code by using two zeros on each side (positions 1-2 and 6-7) => send code * 100
-				const code = msg.includes('rate limit') ? 403 : 404;
-				const fallbackNum = code * 100; // e.g., 403 => 0040300 (center digits 3-5 show 403)
-				updateMoeRepos(fallbackNum, true);
-				if (elServing) elServing.textContent = '0';
-			}
+			handleFetchFailure(err, activeUser, null);
 		}
 	}
 
